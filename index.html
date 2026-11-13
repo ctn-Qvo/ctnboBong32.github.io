@@ -413,41 +413,19 @@
     var mask = document.getElementById('devtools-mask');
     var toolOpen = false;
 
-    // 快捷键拦截
     document.addEventListener('keydown', function (e) {
       var key = (e.key || '').toLowerCase();
       var ctrl = e.ctrlKey || e.metaKey;
       var shift = e.shiftKey;
 
-      // F12
-      if (e.key === 'F12' || e.keyCode === 123) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-      // Ctrl+Shift+I / J / C / K
-      if (ctrl && shift && ['i', 'j', 'c', 'k'].indexOf(key) !== -1) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-      // Ctrl+U 查看源码
-      if (ctrl && !shift && key === 'u') {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-      // Ctrl+S 保存
-      if (ctrl && !shift && key === 's') {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
+      if (e.key === 'F12' || e.keyCode === 123) { e.preventDefault(); e.stopPropagation(); return false; }
+      if (ctrl && shift && ['i', 'j', 'c', 'k'].indexOf(key) !== -1) { e.preventDefault(); e.stopPropagation(); return false; }
+      if (ctrl && !shift && key === 'u') { e.preventDefault(); e.stopPropagation(); return false; }
+      if (ctrl && !shift && key === 's') { e.preventDefault(); e.stopPropagation(); return false; }
     }, true);
 
-    // 窗口尺寸差检测（devtools 打开通常产生明显尺寸差）
     var threshold = 200;
-    var interval = setInterval(function () {
+    setInterval(function () {
       var wDiff = window.outerWidth - window.innerWidth;
       var hDiff = window.outerHeight - window.innerHeight;
       var open = wDiff > threshold || hDiff > threshold;
@@ -455,16 +433,12 @@
       if (open !== toolOpen) {
         toolOpen = open;
         var audio = document.getElementById('bgm');
-
         if (open) {
           mask.classList.add('show');
           if (audio && !audio.paused) audio.pause();
         } else {
           mask.classList.remove('show');
-          // 关闭后恢复播放（若之前有播放源）
-          if (audio && audio.src) {
-            audio.play().catch(function () {});
-          }
+          if (audio && audio.src) audio.play().catch(function () {});
         }
       }
     }, 800);
@@ -481,8 +455,7 @@
       if (!songs.length) return;
       var s = songs[Math.floor(Math.random() * songs.length)];
       audio.src = s.url;
-      audio.play().then(function () { started = true; })
-        .catch(function () { started = false; });
+      audio.play().then(function () { started = true; }).catch(function () { started = false; });
     }
 
     audio.addEventListener('ended', playRandom);
@@ -501,49 +474,51 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== B站头像：unavatar.io 优先 → uapis.cn 兜底 → 透明占位 ========== */
+  /* ========== 朋友信息动态获取：UAPI 仅取昵称，头像统一用 unavatar ========== */
   (function () {
-    var UNAVATAR = 'https://unavatar.io/bilibili/';
     var UAPIS = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=';
+    var UNAVATAR = 'https://unavatar.io/bilibili/';
 
     document.querySelectorAll('.gate .item img[data-uid]').forEach(function (img) {
       var uid = img.getAttribute('data-uid');
       if (!uid) return;
 
+      var item = img.closest('.item');
+      var nameEl = item ? item.querySelector('.inner h5') : null;
+
+      // 1) 头像：始终使用 unavatar，不使用 UAPI 的 face
       tryImage(img, UNAVATAR + uid + '?fallback=false', function () {
+        console.warn('unavatar 头像加载失败 UID ' + uid);
+      });
+
+      // 2) 昵称：通过 UAPI 动态获取，失败保留 HTML 静态名称
+      if (nameEl) {
         fetch(UAPIS + uid, { headers: { 'Accept': 'application/json' } })
           .then(function (res) {
             if (!res.ok) throw new Error('HTTP ' + res.status);
             return res.json();
           })
           .then(function (json) {
-            var face = json && json.face;
-            if (!face) throw new Error('无 face 字段');
-            face = face.replace(/^http:\/\//, 'https://');
-
-            tryImage(img, face, function () {
-              console.warn('头像最终未能加载 UID ' + uid);
-            });
+            if (json && json.name) {
+              nameEl.textContent = json.name;
+            }
           })
           .catch(function (err) {
-            console.warn('uapis 兜底失败 UID ' + uid + '：' + err.message);
+            console.warn('昵称获取失败 UID ' + uid + '：' + err.message + '，保留静态名称');
           });
-      });
+      }
     });
 
     function tryImage(img, src, onFail) {
       var probe = new Image();
       probe.referrerPolicy = 'no-referrer';
-
       probe.onload = function () {
         img.src = src;
         img.classList.add('loaded');
       };
-
       probe.onerror = function () {
         if (typeof onFail === 'function') onFail();
       };
-
       probe.src = src;
     }
   })();
