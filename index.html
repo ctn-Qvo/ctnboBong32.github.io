@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" id="viewport" content="width=device-width, initial-scale=1">
   <link rel="shortcut icon" type="image/x-icon" href="/images/favicon.png">
   <title>依依&个人网站 - Mengyiyi</title>
@@ -474,38 +477,50 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== 朋友信息动态获取：无缓存，每次刷新重新拉取 ========== */
+  /* ========== 朋友信息动态获取：无缓存 + 无预探测 + 超时保护 ========== */
   (function () {
-    function ts() { return Date.now(); }
-
-    // 仅对 img 元素设置 src，且仅接受图片 URL
-    function setAvatarSrc(img, src) {
-      if (!src || typeof src !== 'string') return;
-      img.src = src;
-      img.classList.add('loaded');
-    }
-
-    // 尝试按顺序加载头像源，失败自动尝试下一个
-    function tryAvatar(img, sources, idx) {
+    // 直接设 img.src，用 onerror 做 fallback，不再 new Image() 预探测
+    // 避免频繁刷新时双重请求打爆代理
+    function loadAvatar(img, sources, idx) {
       if (idx >= sources.length) {
         img.classList.add('loaded');
         return;
       }
+
       var src = sources[idx];
-      var probe = new Image();
-      probe.referrerPolicy = 'no-referrer';
-      probe.onload = function () {
-        setAvatarSrc(img, src);
+      var done = false;
+
+      // 8 秒超时，超时自动试下一个源
+      var timer = setTimeout(function () {
+        if (!done) {
+          done = true;
+          loadAvatar(img, sources, idx + 1);
+        }
+      }, 8000);
+
+      img.onload = function () {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          img.classList.add('loaded');
+        }
       };
-      probe.onerror = function () {
-        tryAvatar(img, sources, idx + 1);
+
+      img.onerror = function () {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          loadAvatar(img, sources, idx + 1);
+        }
       };
-      probe.src = src;
+
+      img.referrerPolicy = 'no-referrer';
+      img.src = src;
     }
 
-    // 获取用户信息：uapis.cn + no-store + 时间戳防缓存
+    // 获取用户信息：uapis.cn + no-store
     function fetchUserInfo(uid, cb) {
-      var url = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid + '&_t=' + ts();
+      var url = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid;
       fetch(url, {
         headers: { 'Accept': 'application/json' },
         mode: 'cors',
@@ -524,30 +539,21 @@
 
     function startAvatarChain(img, uid, nameEl) {
       fetchUserInfo(uid, function (err, data) {
-        var resolvedImg = null;
-        var resolvedName = null;
-
         if (!err && data) {
-          resolvedName = data.name || null;
+          // 昵称只写入 h5
+          if (data.name && nameEl) {
+            nameEl.textContent = data.name;
+          }
 
           if (data.face) {
-            // wsrv.nl 代理 + 时间戳防缓存
-            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100&_t=' + ts();
-            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
-            tryAvatar(img, [proxied, fallback], 0);
-            resolvedImg = proxied;
+            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100';
+            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false';
+            loadAvatar(img, [proxied, fallback], 0);
           } else {
-            var fb = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
-            tryAvatar(img, [fb], 0);
+            loadAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
           }
         } else {
-          var fb2 = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
-          tryAvatar(img, [fb2], 0);
-        }
-
-        // 昵称只写入 h5 元素，绝不写入 img.src
-        if (resolvedName && nameEl) {
-          nameEl.textContent = resolvedName;
+          loadAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
         }
       });
     }
