@@ -348,7 +348,7 @@
               </div>
               <div class="inner">
                 <h5>妲宝世一萌</h5>
-                <p>高中同学</p>
+                <p>玩原神的魔人</p>
               </div>
             </div>
           </a>
@@ -477,83 +477,91 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== 朋友信息动态获取：无缓存 + 无预探测 + 超时保护 + 必须完整加载 ========== */
+  /* ========== 朋友头像 & 昵称：主 API = avatar-api.ctn32.us.kg ========== */
   (function () {
-    function loadAvatar(img, sources, idx) {
-      if (idx >= sources.length) {
-        img.classList.add('loaded');
-        return;
-      }
+    var WORKER = 'https://avatar-api.ctn32.us.kg/';
+    var UAPIS  = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=';
 
-      var src = sources[idx];
+    /* 尝试加载一个图片地址；成功 → 淡入；失败/超时 → 执行 next() */
+    function tryLoad(img, url, next) {
       var done = false;
-
-      // 8 秒超时，超时自动试下一个源
       var timer = setTimeout(function () {
-        if (!done) {
-          done = true;
-          loadAvatar(img, sources, idx + 1);
-        }
+        if (!done) { done = true; next(); }
       }, 8000);
 
       img.onload = function () {
         if (!done) {
           done = true;
           clearTimeout(timer);
-          // 头像完整加载成功后再淡入
-          img.classList.add('loaded');
+          img.classList.add('loaded');   // 完整加载完才显示
         }
       };
-
       img.onerror = function () {
         if (!done) {
           done = true;
           clearTimeout(timer);
-          loadAvatar(img, sources, idx + 1);
+          next();
         }
       };
 
       img.referrerPolicy = 'no-referrer';
-      img.src = src;
+      img.src = url;
     }
 
-    function fetchUserInfo(uid, cb) {
-      var url = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid;
-      fetch(url, {
+    /* 头像链：Worker → wsrv.nl(需 face) → unavatar → 默认 */
+    function startAvatar(img, uid) {
+      var primary = WORKER + '?uid=' + uid + '&avatar';
+
+      tryLoad(img, primary, function () {
+        // 主 API 失败，取 face 走 wsrv 备用
+        fetch(UAPIS + uid, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var face = (j && j.face) ? j.face : '';
+            if (face) {
+              tryLoad(img, 'https://wsrv.nl/?url=' + encodeURIComponent(face) + '&q=100', function () {
+                tryLoad(img, 'https://unavatar.io/bilibili/' + uid + '?fallback=false', function () {
+                  img.classList.add('loaded');
+                });
+              });
+            } else {
+              tryLoad(img, 'https://unavatar.io/bilibili/' + uid + '?fallback=false', function () {
+                img.classList.add('loaded');
+              });
+            }
+          })
+          .catch(function () {
+            tryLoad(img, 'https://unavatar.io/bilibili/' + uid + '?fallback=false', function () {
+              img.classList.add('loaded');
+            });
+          });
+      });
+    }
+
+    /* 昵称链：Worker &name → uapis → 保留静态名 */
+    function startName(nameEl, uid) {
+      if (!nameEl) return;
+
+      fetch(WORKER + '?uid=' + uid + '&name', {
         headers: { 'Accept': 'application/json' },
-        mode: 'cors',
         cache: 'no-store'
       })
-      .then(function (res) { return res.json(); })
-      .then(function (json) {
-        if (json && json.face) {
-          cb(null, json);
-        } else {
-          cb(new Error('uapis no face'));
-        }
-      })
-      .catch(function (e) { cb(e); });
-    }
-
-    function startAvatarChain(img, uid, nameEl) {
-      fetchUserInfo(uid, function (err, data) {
-        if (!err && data) {
-          // 昵称只写入 h5，绝不写 img.src
-          if (data.name && nameEl) {
-            nameEl.textContent = data.name;
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.name) {
+            nameEl.textContent = j.name;
+            return;
           }
-
-          if (data.face) {
-            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100';
-            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false';
-            loadAvatar(img, [proxied, fallback], 0);
-          } else {
-            loadAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
-          }
-        } else {
-          loadAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
-        }
-      });
+          throw new Error('empty name');
+        })
+        .catch(function () {
+          fetch(UAPIS + uid, { headers: { 'Accept': 'application/json' }, cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+              if (j && j.name) nameEl.textContent = j.name;
+            })
+            .catch(function () {});
+        });
     }
 
     document.querySelectorAll('.gate .item img[data-uid]').forEach(function (img) {
@@ -563,7 +571,8 @@
       var item = img.closest('.item');
       var nameEl = item ? item.querySelector('.inner h5') : null;
 
-      startAvatarChain(img, uid, nameEl);
+      startAvatar(img, uid);
+      startName(nameEl, uid);
     });
   })();
   </script>
