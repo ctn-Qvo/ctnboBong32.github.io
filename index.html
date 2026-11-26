@@ -474,28 +474,18 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== 朋友信息动态获取：多源头像 fallback + 昵称获取 ========== */
+  /* ========== 朋友信息动态获取：头像与昵称完全分离 ========== */
   (function () {
     var AVATAR_CACHE = {};
 
-    function fetchBilibiliData(uid, cb) {
-      fetch('https://api.bilibili.com/x/space/acc/info?mid=' + uid, {
-        headers: { 'Accept': 'application/json' },
-        mode: 'cors'
-      })
-      .then(function (res) { return res.json(); })
-      .then(function (json) {
-        if (json && json.code === 0 && json.data) {
-          var d = json.data;
-          var face = (d.face || '').replace(/^http:\/\//, 'https://');
-          cb(null, { name: d.nick || d.name || '', face: face });
-        } else {
-          cb(new Error('bilibili api err code=' + (json && json.code)));
-        }
-      })
-      .catch(function (e) { cb(e); });
+    // 仅对 img 元素设置 src，且仅接受图片 URL
+    function setAvatarSrc(img, src) {
+      if (!src || typeof src !== 'string') return;
+      img.src = src;
+      img.classList.add('loaded');
     }
 
+    // 尝试按顺序加载头像源，失败自动尝试下一个
     function tryAvatar(img, sources, idx) {
       if (idx >= sources.length) {
         img.classList.add('loaded');
@@ -506,8 +496,7 @@
       probe.referrerPolicy = 'no-referrer';
       probe.crossOrigin = 'anonymous';
       probe.onload = function () {
-        img.src = src;
-        img.classList.add('loaded');
+        setAvatarSrc(img, src);
       };
       probe.onerror = function () {
         tryAvatar(img, sources, idx + 1);
@@ -515,40 +504,74 @@
       probe.src = src;
     }
 
+    // 获取用户信息（仅 uapis.cn，不再调用 B站官方 API 避免 412 风控）
+    function fetchUserInfo(uid, cb) {
+      fetch('https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid, {
+        headers: { 'Accept': 'application/json' },
+        mode: 'cors'
+      })
+      .then(function (res) { return res.json(); })
+      .then(function (json) {
+        if (json && json.face) {
+          cb(null, json);
+        } else {
+          cb(new Error('uapis no face'));
+        }
+      })
+      .catch(function (e) { cb(e); });
+    }
+
     function startAvatarChain(img, uid, nameEl) {
-      fetchBilibiliData(uid, function (err, data) {
-        if (!err && data && data.face) {
-          // 通过 images.weserv.nl 做 CORS 代理，避免跨站直接读取被拦截
-          var proxied = 'https://images.weserv.nl/?url=' + encodeURIComponent(data.face) + '&q=100';
-          tryAvatar(img, [proxied, 'https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
+      fetchUserInfo(uid, function (err, data) {
+        var resolvedImg = null;
+        var resolvedName = null;
+
+        if (!err && data) {
+          resolvedName = data.name || null;
+
+          if (data.face) {
+            // 通过 wsrv.nl 做 CORS 代理，避免直接跨站读取 B站图片被拦截
+            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100';
+            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false';
+            tryAvatar(img, [proxied, fallback], 0);
+            resolvedImg = proxied;
+          } else {
+            tryAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
+          }
         } else {
           tryAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
         }
-      });
 
-      fetchBilibiliData(uid, function (err, data) {
-        if (!err && data && data.name) {
-          if (nameEl) nameEl.textContent = data.name;
-        } else {
-          fetch('https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid, { headers: { 'Accept': 'application/json' } })
-          .then(function (r) { return r.json(); })
-          .then(function (j) { if (j && j.name && nameEl) nameEl.textContent = j.name; })
-          .catch(function () {});
+        // 昵称只写入 h5 元素，绝不写入 img.src
+        if (resolvedName && nameEl) {
+          nameEl.textContent = resolvedName;
         }
+
+        // 写入缓存，头像和昵称分别存储，互不覆盖
+        if (!AVATAR_CACHE[uid]) AVATAR_CACHE[uid] = {};
+        if (resolvedImg) AVATAR_CACHE[uid].img = resolvedImg;
+        if (resolvedName) AVATAR_CACHE[uid].name = resolvedName;
       });
     }
 
     document.querySelectorAll('.gate .item img[data-uid]').forEach(function (img) {
       var uid = img.getAttribute('data-uid');
       if (!uid) return;
+
+      var item = img.closest('.item');
+      var nameEl = item ? item.querySelector('.inner h5') : null;
+
+      // 命中缓存，分别恢复，互不覆盖
       if (AVATAR_CACHE[uid]) {
         var cached = AVATAR_CACHE[uid];
-        if (cached.img) { img.src = cached.img; img.classList.add('loaded'); }
-        if (cached.name && img.closest('.item')) img.closest('.item').querySelector('.inner h5').textContent = cached.name;
+        if (cached.img) setAvatarSrc(img, cached.img);
+        else img.classList.add('loaded');
+        if (cached.name && nameEl) nameEl.textContent = cached.name;
         return;
       }
-      startAvatarChain(img, uid, img.closest('.item') ? img.closest('.item').querySelector('.inner h5') : null);
-      AVATAR_CACHE[uid] = { img: null, name: '' };
+
+      startAvatarChain(img, uid, nameEl);
+      AVATAR_CACHE[uid] = {};
     });
   })();
   </script>
