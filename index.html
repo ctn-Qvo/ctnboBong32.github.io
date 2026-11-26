@@ -477,10 +477,8 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== 朋友信息动态获取：无缓存 + 无预探测 + 超时保护 ========== */
+  /* ========== 朋友信息动态获取：无缓存 + 无预探测 + 超时保护 + 必须完整加载 ========== */
   (function () {
-    // 直接设 img.src，用 onerror 做 fallback，不再 new Image() 预探测
-    // 避免频繁刷新时双重请求打爆代理
     function loadAvatar(img, sources, idx) {
       if (idx >= sources.length) {
         img.classList.add('loaded');
@@ -502,6 +500,7 @@
         if (!done) {
           done = true;
           clearTimeout(timer);
+          // 头像完整加载成功后再淡入
           img.classList.add('loaded');
         }
       };
@@ -518,7 +517,6 @@
       img.src = src;
     }
 
-    // 获取用户信息：uapis.cn + no-store
     function fetchUserInfo(uid, cb) {
       var url = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid;
       fetch(url, {
@@ -540,7 +538,7 @@
     function startAvatarChain(img, uid, nameEl) {
       fetchUserInfo(uid, function (err, data) {
         if (!err && data) {
-          // 昵称只写入 h5
+          // 昵称只写入 h5，绝不写 img.src
           if (data.name && nameEl) {
             nameEl.textContent = data.name;
           }
