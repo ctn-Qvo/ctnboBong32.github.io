@@ -281,7 +281,7 @@
           <a href="https://b23.tv/wUuAsyH" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="384921614" alt="羊肠小璐-好运版" referrerpolicy="no-referrer">
+                <img data-uid="384921614" alt="羊肠小璐-好运版" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>羊肠小璐-好运版</h5>
@@ -293,7 +293,7 @@
           <a href="https://b23.tv/WjO9GcM" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="446635895" alt="月岛绫乃-MIKA" referrerpolicy="no-referrer">
+                <img data-uid="446635895" alt="月岛绫乃-MIKA" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>月岛绫乃-MIKA</h5>
@@ -305,7 +305,7 @@
           <a href="https://b23.tv/6oalicW" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="1154954095" alt="最爱桑尼的安列斯德" referrerpolicy="no-referrer">
+                <img data-uid="1154954095" alt="最爱桑尼的安列斯德" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>最爱桑尼的安列斯德</h5>
@@ -317,7 +317,7 @@
           <a href="https://b23.tv/I6IlI5z" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="3747560223149400" alt="一只笑笑爽" referrerpolicy="no-referrer">
+                <img data-uid="3747560223149400" alt="一只笑笑爽" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>一只笑笑爽</h5>
@@ -329,7 +329,7 @@
           <a href="https://b23.tv/bxoSu0X" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="3691011498838388" alt="爱玩游戏的锐" referrerpolicy="no-referrer">
+                <img data-uid="3691011498838388" alt="爱玩游戏的锐" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>爱玩游戏的锐</h5>
@@ -341,11 +341,11 @@
           <a href="https://b23.tv/n43hmHK" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="3707025739483271" alt="妲宝世一萌" referrerpolicy="no-referrer">
+                <img data-uid="3707025739483271" alt="妲宝世一萌" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>妲宝世一萌</h5>
-                <p>玩原神的魔人</p>
+                <p>高中同学</p>
               </div>
             </div>
           </a>
@@ -353,7 +353,7 @@
           <a href="https://b23.tv/PyrUD3Y" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="3707021836683498" alt="枫木秋华" referrerpolicy="no-referrer">
+                <img data-uid="3707021836683498" alt="枫木秋华" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>枫木秋华</h5>
@@ -365,7 +365,7 @@
           <a href="https://b23.tv/NQ8CQ2m" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="398493502" alt="李辄鎏喵" referrerpolicy="no-referrer">
+                <img data-uid="398493502" alt="李辄鎏喵" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>李辄鎏喵</h5>
@@ -377,7 +377,7 @@
           <a href="https://b23.tv/fJB3ZtA" target="_blank">
             <div class="item">
               <div class="avatar">
-                <img data-uid="626937733" alt="拂笙清语-静心画画ing" referrerpolicy="no-referrer">
+                <img data-uid="626937733" alt="拂笙清语-静心画画ing" referrerpolicy="no-referrer" loading="eager">
               </div>
               <div class="inner">
                 <h5>拂笙清语-静心画画ing</h5>
@@ -460,7 +460,7 @@
 
     audio.addEventListener('ended', playRandom);
 
-    fetch(PLAYLIST_API)
+    fetch(PLAYLIST_API, { cache: 'no-store' })
       .then(function (res) { return res.json(); })
       .then(function (list) {
         songs = Array.isArray(list) ? list : [];
@@ -474,9 +474,9 @@
       .catch(function (err) { console.error('背景音乐加载失败：', err); });
   })();
 
-  /* ========== 朋友信息动态获取：头像与昵称完全分离 ========== */
+  /* ========== 朋友信息动态获取：无缓存，每次刷新重新拉取 ========== */
   (function () {
-    var AVATAR_CACHE = {};
+    function ts() { return Date.now(); }
 
     // 仅对 img 元素设置 src，且仅接受图片 URL
     function setAvatarSrc(img, src) {
@@ -494,7 +494,6 @@
       var src = sources[idx];
       var probe = new Image();
       probe.referrerPolicy = 'no-referrer';
-      probe.crossOrigin = 'anonymous';
       probe.onload = function () {
         setAvatarSrc(img, src);
       };
@@ -504,11 +503,13 @@
       probe.src = src;
     }
 
-    // 获取用户信息（仅 uapis.cn，不再调用 B站官方 API 避免 412 风控）
+    // 获取用户信息：uapis.cn + no-store + 时间戳防缓存
     function fetchUserInfo(uid, cb) {
-      fetch('https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid, {
+      var url = 'https://uapis.cn/api/v1/social/bilibili/userinfo?uid=' + uid + '&_t=' + ts();
+      fetch(url, {
         headers: { 'Accept': 'application/json' },
-        mode: 'cors'
+        mode: 'cors',
+        cache: 'no-store'
       })
       .then(function (res) { return res.json(); })
       .then(function (json) {
@@ -530,27 +531,24 @@
           resolvedName = data.name || null;
 
           if (data.face) {
-            // 通过 wsrv.nl 做 CORS 代理，避免直接跨站读取 B站图片被拦截
-            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100';
-            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false';
+            // wsrv.nl 代理 + 时间戳防缓存
+            var proxied = 'https://wsrv.nl/?url=' + encodeURIComponent(data.face) + '&q=100&_t=' + ts();
+            var fallback = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
             tryAvatar(img, [proxied, fallback], 0);
             resolvedImg = proxied;
           } else {
-            tryAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
+            var fb = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
+            tryAvatar(img, [fb], 0);
           }
         } else {
-          tryAvatar(img, ['https://unavatar.io/bilibili/' + uid + '?fallback=false'], 0);
+          var fb2 = 'https://unavatar.io/bilibili/' + uid + '?fallback=false&_t=' + ts();
+          tryAvatar(img, [fb2], 0);
         }
 
         // 昵称只写入 h5 元素，绝不写入 img.src
         if (resolvedName && nameEl) {
           nameEl.textContent = resolvedName;
         }
-
-        // 写入缓存，头像和昵称分别存储，互不覆盖
-        if (!AVATAR_CACHE[uid]) AVATAR_CACHE[uid] = {};
-        if (resolvedImg) AVATAR_CACHE[uid].img = resolvedImg;
-        if (resolvedName) AVATAR_CACHE[uid].name = resolvedName;
       });
     }
 
@@ -561,17 +559,7 @@
       var item = img.closest('.item');
       var nameEl = item ? item.querySelector('.inner h5') : null;
 
-      // 命中缓存，分别恢复，互不覆盖
-      if (AVATAR_CACHE[uid]) {
-        var cached = AVATAR_CACHE[uid];
-        if (cached.img) setAvatarSrc(img, cached.img);
-        else img.classList.add('loaded');
-        if (cached.name && nameEl) nameEl.textContent = cached.name;
-        return;
-      }
-
       startAvatarChain(img, uid, nameEl);
-      AVATAR_CACHE[uid] = {};
     });
   })();
   </script>
